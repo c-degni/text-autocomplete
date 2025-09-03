@@ -15,7 +15,7 @@ function inCodeBlock(editor: Editor, cursor: EditorPosition): boolean {
 			inCodeBlock = !inCodeBlock;
 		}
 	}
-	
+
 	return inCodeBlock;
 }
 
@@ -32,7 +32,7 @@ export default class TAPlugin extends Plugin {
 		await this.loadWordTrie();
 		this.settingsTab = new TASettingsTab(this.app, this);
 		this.addSettingTab(this.settingsTab);
-		
+
 		// Event listeners for autocomplete triggers, keydowns, and extensions
 		this.registerEvent(this.app.workspace.on('editor-change', this.handleEditorChange.bind(this)));
 		this.registerEvent(this.app.workspace.on('editor-menu', this.handleContextMenu.bind(this)));
@@ -121,7 +121,7 @@ export default class TAPlugin extends Plugin {
 			.filter((w: string) => w !== word);
 
 		if (suggestions.length > 0) {
-			updateSuggestions(suggestions, editor);
+			updateSuggestions(suggestions, editor, this.settings);
 		} else {
 			destroyTAUI(); // Should never happen but is a safety check
 		}
@@ -131,7 +131,7 @@ export default class TAPlugin extends Plugin {
 	handleContextMenu(menu: Menu, editor: Editor) {
 		const selectedText = editor.getSelection()?.trim();
 		if (selectedText && /^.*$/.test(selectedText)) {
-			menu.addItem(item => 
+			menu.addItem(item =>
 				item.setTitle(`Add "${selectedText}" to custom dictionary`)
 					.onClick(async () => {
 						if (!this.settings.customDict.includes(selectedText)) {
@@ -175,7 +175,7 @@ export default class TAPlugin extends Plugin {
 				destroyTAUI();
 				return;
 			}
-			if (evt.key === 'ArrowDown') index = (index + 1) % items.length; 
+			if (evt.key === 'ArrowDown') index = (index + 1) % items.length;
 			if (evt.key === 'ArrowUp') index = (index - 1 + items.length) % items.length;
 
 			items.forEach((item, i) => item.classList.toggle('active', i === index)); // Updates which suggestion is tagged active

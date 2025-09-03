@@ -1,5 +1,6 @@
 import { ViewPlugin, ViewUpdate, PluginValue } from '@codemirror/view';
 import { Editor, EditorRange } from 'obsidian';
+import { TASettings } from './settings';
 
 let dropdownEl: HTMLUListElement | null = null;
 
@@ -12,7 +13,7 @@ interface CodeMirrorEditor extends Editor {
                 };
             };
         };
-        coordsAtPos: (pos: number) => { left: number; top: number; bottom: number} | null;
+        coordsAtPos: (pos: number) => { left: number; top: number; bottom: number } | null;
     };
 }
 
@@ -31,8 +32,8 @@ export function createTAUI() {
                     const lineStart = doc.lineAt(cursor).from;
                     const line = doc.lineAt(cursor).text;
                     const beforeCursor = line.substring(0, cursor - lineStart); // Current line up to cursor
-		            const afterCursor = line.substring(cursor - lineStart);
-                    
+                    const afterCursor = line.substring(cursor - lineStart);
+
                     // Destroy dropdown if cursor is in a word or before punctation
                     if (/^[\w.,;:!?'"()\[\]{}\-_+=<>@#$%^&*]/.test(afterCursor)) {
                         destroyTAUI();
@@ -66,7 +67,7 @@ export function destroyTAUI() {
     dropdownEl = null;
 }
 
-export function updateSuggestions(suggestions: string[], editor: Editor) {
+export function updateSuggestions(suggestions: string[], editor: Editor, settings: TASettings) {
     destroyTAUI();
 
     const cm = (editor as CodeMirrorEditor).cm;
@@ -86,8 +87,9 @@ export function updateSuggestions(suggestions: string[], editor: Editor) {
             const beforeCursor = line.substring(0, cursor.ch);
             const match = beforeCursor.match(/(\b[\w']+)$/);
             if (match) {
+                if (settings.addSpace) suggestion += " ";
                 editor.replaceRange(
-                    suggestion, 
+                    suggestion,
                     { line: cursor.line, ch: cursor.ch - match[1].length }, // start position (line, position in line)
                     cursor // end position (line, position in line)
                 );

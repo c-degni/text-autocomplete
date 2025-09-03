@@ -8,14 +8,16 @@ export interface TASettings {
     enabled: boolean; // Autocomplete enabling
     language: string; // Language support
     maxSuggestions: number; // Max number of proposed suggestions at a time
+    addSpace: boolean; // Add space enabling
     customDict: string[];
     // latex: boolean; // LaTeX support
 }
 
-export const DEFAULT_SETTINGS : TASettings = {
+export const DEFAULT_SETTINGS: TASettings = {
     enabled: true,
     language: 'English',
     maxSuggestions: 3,
+    addSpace: false,
     customDict: [],
     // latex: false,
 }
@@ -69,6 +71,17 @@ export class TASettingsTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }));
 
+        new Setting(containerEl)
+            .setName('Space terminator after autocomplete')
+            .setDesc('Enable/disable adding space terminator to autocompleted words.')
+            .addToggle(toggle =>
+                toggle.setValue(this.plugin.settings.addSpace)
+                    .onChange(async val => {
+                        this.plugin.settings.addSpace = val;
+                        if (!val) destroyTAUI;
+                        await this.plugin.saveSettings();
+                    }));
+
         // Custom dictionary setting
         new Setting(containerEl)
             .setName('Custom dictionary')
@@ -102,7 +115,7 @@ export class TASettingsTab extends PluginSettingTab {
                     scrollContainer.classList.remove('show');
                 }, 1000);
             });
-            
+
             this.plugin.settings.customDict.forEach((word: string, index: number) => {
                 const row = new Setting(scrollContainer)
                     .setDesc(word)
