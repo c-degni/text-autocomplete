@@ -71,6 +71,7 @@ export class TASettingsTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }));
 
+        // Space terminator setting
         new Setting(containerEl)
             .setName('Space terminator after autocomplete')
             .setDesc('Enable/disable adding space terminator to autocompleted words.')
@@ -147,10 +148,10 @@ export class TASettingsTab extends PluginSettingTab {
                         this.display();
                     }));
 
-        // LaTex setting
+        // LaTeX setting
         // new Setting(containerEl)
         //     .setName('LaTeX Support')
-        //     .setDesc('Enable/disable LaTex code autocomplete.')
+        //     .setDesc('Enable/disable LaTeX code autocomplete.')
         //     .addToggle(toggle =>
         //         toggle.setValue(this.plugin.settings.latex)
         //             .onChange(async val => {
