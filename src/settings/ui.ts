@@ -1,6 +1,7 @@
 import { ViewPlugin, ViewUpdate, PluginValue } from '@codemirror/view';
-import { Editor, EditorRange } from 'obsidian';
+import { Editor } from 'obsidian';
 import { TASettings } from './settings';
+import { stringInWordOrBeforePunctuation, wordBeforeString } from 'src/utils';
 
 let dropdownEl: HTMLUListElement | null = null;
 
@@ -26,24 +27,15 @@ export function createTAUI() {
                 update(update: ViewUpdate) {
                     if (!update.selectionSet && !update.docChanged && !update.focusChanged) return;
 
-                    const cursor = update.state.selection.main.head;
+                    const cursor: number = update.state.selection.main.head;
                     const doc = update.state.doc;
                     if (!cursor) return;
-                    const lineStart = doc.lineAt(cursor).from;
-                    const line = doc.lineAt(cursor).text;
-                    const beforeCursor = line.substring(0, cursor - lineStart); // Current line up to cursor
-                    const afterCursor = line.substring(cursor - lineStart);
+                    const lineStart: number = doc.lineAt(cursor).from;
+                    const line: string = doc.lineAt(cursor).text;
+                    const beforeCursor: string = line.substring(0, cursor - lineStart); // Current line up to cursor
+                    const afterCursor: string = line.substring(cursor - lineStart);
 
-                    // Destroy dropdown if cursor is in a word or before punctation
-                    if (/^[\w.,;:!?'"()\[\]{}\-_+=<>@#$%^&*]/.test(afterCursor)) {
-                        destroyTAUI();
-                        this.lastCursor = cursor;
-                        return;
-                    }
-
-                    const match = beforeCursor.match(/(\b[\w']+)$/); // Match contains word at the end of string
-                    // No matches (word at the end of the string) 
-                    if (!match) {
+                    if (stringInWordOrBeforePunctuation(afterCursor) || !wordBeforeString(beforeCursor)) {
                         destroyTAUI();
                         this.lastCursor = cursor;
                         return;
@@ -52,9 +44,7 @@ export function createTAUI() {
                     if (!this.lastCursor) return;
                     const typing: boolean = this.lastCursor === cursor + 1 || this.lastCursor === cursor - 1;
 
-                    if (!typing) {
-                        destroyTAUI();
-                    }
+                    if (!typing) destroyTAUI();
                     this.lastCursor = cursor;
                 }
             }
@@ -76,7 +66,7 @@ export function updateSuggestions(suggestions: string[], editor: Editor, setting
     if (!coords) return;
 
     dropdownEl = createEl('ul');
-    dropdownEl.className = 'autocomplete-dropdown';
+    dropdownEl!.className = 'autocomplete-dropdown';
 
     suggestions.forEach(suggestion => {
         const li = createEl('li');
@@ -85,11 +75,9 @@ export function updateSuggestions(suggestions: string[], editor: Editor, setting
             const cursor = editor.getCursor();
             const line = editor.getLine(cursor.line);
             const beforeCursor = line.substring(0, cursor.ch);
-            const match = beforeCursor.match(/(\b[\w']+)$/);
+            const match = wordBeforeString(beforeCursor);
             if (match) {
-                if (settings.addSpace) {
-                    suggestion += " ";
-                }
+                if (settings.addSpace) suggestion += " ";
                 editor.replaceRange(
                     suggestion,
                     { line: cursor.line, ch: cursor.ch - match[1].length }, // start position (line, position in line)
@@ -101,9 +89,9 @@ export function updateSuggestions(suggestions: string[], editor: Editor, setting
         dropdownEl?.appendChild(li);
     });
 
-    (dropdownEl.firstChild as HTMLLIElement)?.classList.add('active'); // First suggestion will by default be tagged as active
+    (dropdownEl!.firstChild as HTMLLIElement)?.classList.add('active');
 
-    dropdownEl.setCssStyles({
+    dropdownEl!.setCssStyles({
         position: 'absolute',
         top: `${coords.bottom + window.scrollY}px`,
         left: `${coords.left + window.scrollX}px`,
@@ -117,5 +105,5 @@ export function updateSuggestions(suggestions: string[], editor: Editor, setting
         width: '200px',
     });
 
-    document.body.appendChild(dropdownEl);
+    document.body.appendChild(dropdownEl!);
 }
