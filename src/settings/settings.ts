@@ -49,7 +49,7 @@ export class TASettingsTab extends PluginSettingTab {
                 toggle.setValue(this.plugin.settings.enabled)
                     .onChange(async (val: boolean) => {
                         this.plugin.settings.enabled = val;
-                        if (!val) destroyTAUI;
+                        if (!val) destroyTAUI();
                         await this.plugin.saveSettings();
                     }));
 
@@ -86,7 +86,7 @@ export class TASettingsTab extends PluginSettingTab {
                 toggle.setValue(this.plugin.settings.addSpace)
                     .onChange(async (val: boolean) => {
                         this.plugin.settings.addSpace = val;
-                        if (!val) destroyTAUI;
+                        if (!val) destroyTAUI();
                         await this.plugin.saveSettings();
                     }));
 
@@ -131,7 +131,9 @@ export class TASettingsTab extends PluginSettingTab {
                             .setTooltip(`Remove "${word}" from your custom dictionary`)
                             .onClick(async () => {
                                 this.plugin.settings.customDict.splice(index, 1);
-                                this.plugin.wordTrie.remove(word);
+                                if (!this.wordExistsInAnotherDict(word, -1)) {
+                                    this.plugin.wordTrie.remove(word)
+                                }
                                 await this.plugin.saveSettings();
                                 // new Notice(`Removed "${word}" from your custom dictionary.`)
                                 this.display();
@@ -147,7 +149,11 @@ export class TASettingsTab extends PluginSettingTab {
                 b.setButtonText('Reset')
                     .setCta()
                     .onClick(async () => {
-                        this.plugin.settings.customDict.forEach((word: string) => this.plugin.wordTrie.remove(word));
+                        this.plugin.settings.customDict.forEach((word: string) =>  {
+                            if (!this.wordExistsInAnotherDict(word, -1)) {
+                                this.plugin.wordTrie.remove(word)
+                            }
+                        });
                         this.plugin.settings.customDict = [];
                         await this.plugin.saveSettings();
                         // new Notice('Custom dictionary cleared.')
@@ -159,11 +165,12 @@ export class TASettingsTab extends PluginSettingTab {
             .setName('Imported dictionaries')
             .setDesc('Import words from a one word per line Text File (.txt).')
             .addButton((b: ButtonComponent) => 
-                b.setButtonText('Import file')
+                b.setButtonText('Import')
                     .onClick(() => {
-                        const input : HTMLInputElement = document.createEl('input');
+                        const input: HTMLInputElement = document.createElement('input');
                         input.type = 'file';
                         input.accept = '.txt';
+                        input.style.display = 'none';
                         input.onchange = async () => {
                             const file: File | undefined = input.files?.[0];
                             if (!file) return;
@@ -174,14 +181,13 @@ export class TASettingsTab extends PluginSettingTab {
                             }
 
                             const text: string = await file.text();
-                            const separator: string = '\n';
                             const words: string[] = text
-                                .split(separator)
+                                .split(/\r?\n/)
                                 .map((w: string) => w.trim())
                                 .filter((w: string) => w.length > 0);
 
                             if (words.length === 0) {
-                                new Notice('No new words found in file.');
+                                new Notice('No words found in file.');
                                 return;
                             }
 
@@ -192,9 +198,10 @@ export class TASettingsTab extends PluginSettingTab {
                             const dictFile: DictionaryFile = { filename: file.name, words: words };
                             this.plugin.settings.dictFiles.push(dictFile);
                             await this.plugin.saveSettings();
-                            new Notice(`Imported ${words.length} new word(s) from "${file.name}".`)
+                            new Notice(`Imported ${words.length} word(s) from "${file.name}".`)
                             this.display();
                         };
+                        document.body.appendChild(input);
                         input.click();
                     }));
 
@@ -219,13 +226,13 @@ export class TASettingsTab extends PluginSettingTab {
                             .setTooltip(`Remove "${file.filename}" and its words from your imported dictionaries`)
                             .onClick(async () => {
                                 file.words.forEach((w: string) => {
-                                    if (!this.plugin.settings.customDict.includes(w)) {
+                                    if (!this.wordExistsInAnotherDict(w, index)) {
                                         this.plugin.wordTrie.remove(w);
                                     }
                                 });
                                 this.plugin.settings.dictFiles.splice(index, 1);
                                 await this.plugin.saveSettings();
-                                new Notice(`Removed "${file.filename}" and its words from your imported dictionaries.`)
+                                // new Notice(`Removed "${file.filename}" and its words from your imported dictionaries.`)
                                 this.display();
                             }));
             });
@@ -241,5 +248,19 @@ export class TASettingsTab extends PluginSettingTab {
         //                 this.plugin.settings.latex = val;
         //                 await this.plugin.saveSettings();
         //             }));
+    }
+
+    private wordExistsInAnotherDict(word: string, referenceDictIndex: number): boolean {
+        let customDict: boolean = false;
+        if (referenceDictIndex === -1) {
+            referenceDictIndex = this.plugin.settings.dictFiles.length + 1;
+            customDict = false;
+        } else {
+            customDict = this.plugin.settings.customDict.includes(word);
+        }
+
+        return this.plugin.settings.dictFiles.some((dict, dictIndex) =>
+            dictIndex !== referenceDictIndex && dict.words.includes(word)
+        ) || customDict;
     }
 }
