@@ -1,10 +1,9 @@
 import { PluginSettingTab, App, Setting, Notice, DropdownComponent, ToggleComponent, SliderComponent, TextComponent, ButtonComponent } from 'obsidian';
 import type TAPlugin from 'src/main';
 import { destroyTAUI } from './ui';
+import { DUPLICATE_FILE, DUPLICATE_WORD, EMPTY_FILE, OK, Result } from 'src/utils';
 
-// TODO Add LaTex support
-
-type DictionaryFile = {
+export interface DictionaryFile {
     filename: string;
     words: string[];
 };
@@ -14,9 +13,9 @@ export interface TASettings {
     language: string;
     maxSuggestions: number;
     addSpace: boolean;
+    caseSensitive: boolean;
     customDict: string[];
     dictFiles: DictionaryFile[];
-    // latex: boolean;
 }
 
 export const DEFAULT_SETTINGS: TASettings = {
@@ -24,9 +23,9 @@ export const DEFAULT_SETTINGS: TASettings = {
     language: 'English',
     maxSuggestions: 3,
     addSpace: false,
+    caseSensitive: true,
     customDict: [],
-    dictFiles: [],
-    // latex: false,
+    dictFiles: []
 }
 
 export class TASettingsTab extends PluginSettingTab {
@@ -38,7 +37,7 @@ export class TASettingsTab extends PluginSettingTab {
     }
 
     display(): void {
-        const containerEl = this.containerEl;
+        const containerEl: HTMLElement = this.containerEl;
         containerEl.empty();
 
         // AUTOCOMPLETE
@@ -48,9 +47,7 @@ export class TASettingsTab extends PluginSettingTab {
             .addToggle((toggle: ToggleComponent) =>
                 toggle.setValue(this.plugin.settings.enabled)
                     .onChange(async (val: boolean) => {
-                        this.plugin.settings.enabled = val;
-                        if (!val) destroyTAUI();
-                        await this.plugin.saveSettings();
+                        this.updateSetting('enabled', val, !val);
                     }));
 
         // LANGUAGE
@@ -61,8 +58,7 @@ export class TASettingsTab extends PluginSettingTab {
                 dropdown.addOption('English', 'English')
                     .setValue(this.plugin.settings.language)
                     .onChange(async (val: string) => {
-                        this.plugin.settings.language = val;
-                        await this.plugin.saveSettings();
+                        this.updateSetting('language', val, true);
                     }));
 
         // MAX SUGGESTIONS
@@ -74,8 +70,7 @@ export class TASettingsTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.maxSuggestions)
                     .setDynamicTooltip()
                     .onChange(async (val: number) => {
-                        this.plugin.settings.maxSuggestions = val;
-                        await this.plugin.saveSettings();
+                        this.updateSetting('maxSuggestions', val, false);
                     }));
 
         // SPACE TERMINATOR
@@ -85,28 +80,36 @@ export class TASettingsTab extends PluginSettingTab {
             .addToggle((toggle: ToggleComponent) =>
                 toggle.setValue(this.plugin.settings.addSpace)
                     .onChange(async (val: boolean) => {
-                        this.plugin.settings.addSpace = val;
-                        if (!val) destroyTAUI();
-                        await this.plugin.saveSettings();
+                        this.updateSetting('addSpace', val, false);
+                    }));
+
+        // CASE SENSITIVE
+        new Setting(containerEl)
+            .setName('Case sensitive suggestions')
+            .setDesc('Enable/disable case sensitivity for word suggestions.')
+            .addToggle((toggle: ToggleComponent) =>
+                toggle.setValue(this.plugin.settings.caseSensitive)
+                    .onChange(async (val: boolean) => {
+                        this.updateSetting('caseSensitive', val, true);
                     }));
 
         // CUSTOM DICT
         new Setting(containerEl)
             .setName('Custom dictionary')
-            .setDesc('Add words to a your custom dictionary.')
+            .setDesc('Add words to your custom dictionary.')
             .addText((text: TextComponent) => {
                 text.setPlaceholder('e.g. tiktok');
                 text.inputEl.addEventListener('keydown', async (e: KeyboardEvent) => {
-                    if (e.key === 'Enter') {
-                        const word = text.getValue().trim();
-                        if (word && !this.plugin.settings.customDict.includes(word)) {
-                            this.plugin.settings.customDict.push(word);
-                            this.plugin.wordTrie.insert(word);
-                            await this.plugin.saveSettings();
-                            // new Notice(`Added "${word}" to your custom dictionary.`);
-                            this.display();
-                        }
+                    if (e.key !== 'Enter') return;
+
+                    const word: string = text.getValue().trim();
+                    const result: Result = await this.plugin.addCustomWord(word);
+
+                    if (!result.ok && result === DUPLICATE_WORD) {
+                        new Notice(`"${word}" is already in your custom dictionary.`);
                     }
+
+                    this.display();
                 });
             });
 
@@ -115,30 +118,19 @@ export class TASettingsTab extends PluginSettingTab {
                 scrollTimeout?: number;
             };
 
-            scrollContainer.addEventListener('scroll', () => {
-                scrollContainer.classList.add('show');
-                window.clearTimeout(scrollContainer.scrollTimeout);
-                scrollContainer.scrollTimeout = window.setTimeout(() => {
-                    scrollContainer.classList.remove('show');
-                }, 1000);
-            });
+            this.addDefaultScrollContainerBehavior(scrollContainer);
 
             this.plugin.settings.customDict.forEach((word: string, index: number) => {
-                const row = new Setting(scrollContainer)
+                new Setting(scrollContainer)
                     .setDesc(word)
                     .addButton((b: ButtonComponent) =>
                         b.setButtonText('Remove')
                             .setTooltip(`Remove "${word}" from your custom dictionary`)
                             .onClick(async () => {
-                                this.plugin.settings.customDict.splice(index, 1);
-                                if (!this.wordExistsInAnotherDict(word, -1)) {
-                                    this.plugin.wordTrie.remove(word)
-                                }
-                                await this.plugin.saveSettings();
-                                // new Notice(`Removed "${word}" from your custom dictionary.`)
+                                await this.plugin.removeCustomWord(index);
                                 this.display();
-                            }))
-            })
+                            }));
+            });
         }
 
         // CLEAR CUSTOM DICT
@@ -149,14 +141,7 @@ export class TASettingsTab extends PluginSettingTab {
                 b.setButtonText('Reset')
                     .setCta()
                     .onClick(async () => {
-                        this.plugin.settings.customDict.forEach((word: string) =>  {
-                            if (!this.wordExistsInAnotherDict(word, -1)) {
-                                this.plugin.wordTrie.remove(word)
-                            }
-                        });
-                        this.plugin.settings.customDict = [];
-                        await this.plugin.saveSettings();
-                        // new Notice('Custom dictionary cleared.')
+                        await this.plugin.clearCustomWords();
                         this.display();
                     }));
 
@@ -166,43 +151,8 @@ export class TASettingsTab extends PluginSettingTab {
             .setDesc('Import words from a one word per line Text File (.txt).')
             .addButton((b: ButtonComponent) => 
                 b.setButtonText('Import')
-                    .onClick(() => {
-                        const input: HTMLInputElement = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = '.txt';
-                        input.style.display = 'none';
-                        input.onchange = async () => {
-                            const file: File | undefined = input.files?.[0];
-                            if (!file) return;
-
-                            if (this.plugin.settings.dictFiles.some(f => f.filename === file.name)) {
-                                new Notice(`"${file.name}" has already been imported.`);
-                                return;
-                            }
-
-                            const text: string = await file.text();
-                            const words: string[] = text
-                                .split(/\r?\n/)
-                                .map((w: string) => w.trim())
-                                .filter((w: string) => w.length > 0);
-
-                            if (words.length === 0) {
-                                new Notice('No words found in file.');
-                                return;
-                            }
-
-                            words.forEach((w: string) => {
-                                this.plugin.wordTrie.insert(w);
-                            });
-
-                            const dictFile: DictionaryFile = { filename: file.name, words: words };
-                            this.plugin.settings.dictFiles.push(dictFile);
-                            await this.plugin.saveSettings();
-                            new Notice(`Imported ${words.length} word(s) from "${file.name}".`)
-                            this.display();
-                        };
-                        document.body.appendChild(input);
-                        input.click();
+                    .onClick(async () => {
+                        await this.importDictionary();
                     }));
 
         if (this.plugin.settings.dictFiles.length > 0) {
@@ -210,57 +160,73 @@ export class TASettingsTab extends PluginSettingTab {
                 scrollTimeout?: number;
             };
 
-            importContainer.addEventListener('scroll', () => {
-                importContainer.classList.add('show');
-                window.clearTimeout(importContainer.scrollTimeout);
-                importContainer.scrollTimeout = window.setTimeout(() => {
-                    importContainer.classList.remove('show');
-                }, 1000);
-            });
+            this.addDefaultScrollContainerBehavior(importContainer);
 
             this.plugin.settings.dictFiles.forEach((file: DictionaryFile, index: number) => {
                 new Setting(importContainer)
                     .setDesc(`${file.filename} ~ ${file.words.length} word(s)`)
                     .addButton((b: ButtonComponent) =>
                         b.setButtonText('Remove')
-                            .setTooltip(`Remove "${file.filename}" and its words from your imported dictionaries`)
+                            .setTooltip(`Remove "${file.filename}" and its words from imported dictionaries`)
                             .onClick(async () => {
-                                file.words.forEach((w: string) => {
-                                    if (!this.wordExistsInAnotherDict(w, index)) {
-                                        this.plugin.wordTrie.remove(w);
-                                    }
-                                });
-                                this.plugin.settings.dictFiles.splice(index, 1);
-                                await this.plugin.saveSettings();
-                                // new Notice(`Removed "${file.filename}" and its words from your imported dictionaries.`)
+                                await this.plugin.removeImportedDictFile(index);
                                 this.display();
                             }));
             });
         };
-
-        // LATEX
-        // new Setting(containerEl)
-        //     .setName('LaTeX Support')
-        //     .setDesc('Enable/disable LaTeX code autocomplete.')
-        //     .addToggle(toggle =>
-        //         toggle.setValue(this.plugin.settings.latex)
-        //             .onChange(async val => {
-        //                 this.plugin.settings.latex = val;
-        //                 await this.plugin.saveSettings();
-        //             }));
     }
 
-    private wordExistsInAnotherDict(word: string, referenceDictIndex: number): boolean {
-        let customDict: boolean = false;
-        if (referenceDictIndex === -1) {
-            referenceDictIndex = this.plugin.settings.dictFiles.length + 1;
-            customDict = false;
-        } else {
-            customDict = this.plugin.settings.customDict.includes(word);
-        }
+    private async updateSetting<K extends keyof TASettings>(
+        key: K, 
+        val: TASettings[K], 
+        destroyUI: boolean
+    ): Promise<void> {
+        this.plugin.settings[key] = val;
+        if (destroyUI) destroyTAUI();
+        await this.plugin.saveSettings();
+    }
 
-        return this.plugin.settings.dictFiles.some((dict, dictIndex) =>
-            dictIndex !== referenceDictIndex && dict.words.includes(word)
-        ) || customDict;
+    private addDefaultScrollContainerBehavior(container: HTMLDivElement & { scrollTimeout?: number }): void {
+        container.addEventListener('scroll', () => {
+            container.classList.add('show');
+            window.clearTimeout(container.scrollTimeout);
+            container.scrollTimeout = window.setTimeout(() => {
+                container.classList.remove('show');
+            }, 1000);
+        });
+    }
+
+    private async importDictionary(): Promise<void> {
+        const input: HTMLInputElement = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.txt';
+        input.style.display = 'none';
+
+        document.body.appendChild(input);
+
+        input.onchange = async () => {
+            const file: File | undefined = input.files?.[0];
+            if (!file) return;
+
+            const res: {result: Result, wordCount?: number}  = await this.plugin.importDictFile(file);
+
+            if (!res.result.ok) {
+                if (res.result === DUPLICATE_FILE) {
+                    new Notice(`"${file.name}" has already been imported.`);
+                } else if (res.result === EMPTY_FILE) {
+                    new Notice('No words found in file.');
+                } else {
+                    new Notice('Failed to import dictionary file.');
+                }
+                return;
+            }
+
+            new Notice(`Imported ${res.wordCount} word(s) from "${file.name}".`)
+            this.display();
+
+            input.remove();
+        };
+
+        input.click();
     }
 }
