@@ -1,9 +1,10 @@
 import { Editor, EditorPosition, Plugin, Menu, MenuItem, Notice } from 'obsidian';
 import { TASettingsTab, DEFAULT_SETTINGS, TASettings, DictionaryFile } from './settings/settings';
 import { createTAUI, destroyTAUI, updateSuggestions } from './settings/ui';
-import { DUPLICATE_FILE, DUPLICATE_WORD, EMPTY_FILE, inCodeBlock, NOT_OK, OK, Result, stringInWordOrBeforePunctuation, wordBeforeString } from './utils';
-import { DEFAULT_TRIE } from './dictionary/dictionary';
+import { inCodeBlock, Result, stringInWordOrBeforePunctuation, wordBeforeString } from './utils';
+import { DEFAULT_DICTIONARIES, Dictionary } from './dictionary/dictionary';
 import { Trie } from './dictionary/trie';
+import { ACCEPTED_SUGGESTION_BUMP, CUSTOM_WORD_SCORE, DEFAULT_WORD_SCORE, DUPLICATE_FILE, DUPLICATE_WORD, EMPTY_FILE, IMPORT_WORD_SCORE, NOT_OK, OK } from './constants';
 
 export default class TAPlugin extends Plugin {
 	settings: TASettings;
@@ -33,11 +34,31 @@ export default class TAPlugin extends Plugin {
 	}
 
 	async loadWordTrie() {
-		this.wordTrie = DEFAULT_TRIE;
-		this.settings.customDict.forEach(word => this.wordTrie.insert(word));
-		this.settings.dictFiles.forEach(file => 
-			file.words.forEach(word => this.wordTrie.insert(word))
-		);
+		this.wordTrie = new Trie(this.settings.maxSuggestions);
+
+		DEFAULT_DICTIONARIES.forEach((dict: Dictionary) => {
+			dict.words.forEach((word: string) => {
+				const score: number = this.settings.wordScores[word] ?? DEFAULT_WORD_SCORE;
+				this.settings.wordScores[word] = score;
+				this.wordTrie.insert(word, score);
+			});
+		});
+
+		this.settings.customDict.forEach((word: string) => {
+			const score: number = this.settings.wordScores[word] ?? CUSTOM_WORD_SCORE;
+			this.settings.wordScores[word] = score;
+			this.wordTrie.insert(word, score);
+		});
+
+		this.settings.dictFiles.forEach((file: DictionaryFile) => {
+			file.words.forEach((word: string) => {
+				const score: number = this.settings.wordScores[word] ?? IMPORT_WORD_SCORE;
+				this.settings.wordScores[word] = score;
+				this.wordTrie.insert(word)
+			});
+		});
+
+		await this.saveSettings();
 	}
 
 	async saveSettings() {
@@ -73,11 +94,14 @@ export default class TAPlugin extends Plugin {
 		}
 
 		const word: string = match[1];
-		const suggestions: string[] = this.wordTrie.findWordsWithPrefix(word, this.settings.maxSuggestions, this.settings.caseSensitive)
-			.filter((w: string) => w !== word);
+		const suggestions: string[] = this.wordTrie.findWordsWithPrefix(
+			word, 
+			this.settings.maxSuggestions, 
+			this.settings.caseSensitive
+		);
 
 		if (suggestions.length > 0) {
-			updateSuggestions(suggestions, editor, this.settings);
+			updateSuggestions(suggestions, editor, this);
 		} else {
 			destroyTAUI();
 		}
@@ -122,7 +146,9 @@ export default class TAPlugin extends Plugin {
 
 			if (evt.key === 'Enter' || evt.key === 'Tab') {
 				const selected = active || items[0];
-				if (selected) selected.dispatchEvent(new Event('mousedown'));
+				if (selected) {
+					selected.dispatchEvent(new Event('mousedown'));
+				}
 				destroyTAUI();
 				return;
 			}
@@ -137,12 +163,22 @@ export default class TAPlugin extends Plugin {
 		if (this.settingsTab) this.settingsTab.display();
 	}
 
+	async bumpAcceptedWord(word: string): Promise<void> {
+		this.wordTrie.bumpWordScore(word, ACCEPTED_SUGGESTION_BUMP);
+		this.settings.wordScores[word] = this.wordTrie.getScore(word);
+		await this.saveSettings();
+	}
+
 	async addCustomWord(word: string): Promise<Result> {
 		if (!word) return EMPTY_FILE;
 		if (this.settings.customDict.includes(word)) return DUPLICATE_WORD;
 
 		this.settings.customDict.push(word);
-		this.wordTrie.insert(word);
+
+		const score: number = this.settings.wordScores[word] ?? CUSTOM_WORD_SCORE;
+		this.settings.wordScores[word] = score;
+
+		this.wordTrie.insert(word, score);
 		await this.saveSettings();
 		return OK;
 	}
@@ -152,8 +188,10 @@ export default class TAPlugin extends Plugin {
 		if (!word) return NOT_OK;
 
 		this.settings.customDict.splice(index, 1);
+
 		if (!this.wordExistsInAnotherDict(word, -1)) {
 			this.wordTrie.remove(word);
+			delete this.settings.wordScores[word];
 		}
 		
 		await this.saveSettings();
@@ -164,6 +202,7 @@ export default class TAPlugin extends Plugin {
 		this.settings.customDict.forEach((word: string) => {
 			if (!this.wordExistsInAnotherDict(word, -1)) {
 				this.wordTrie.remove(word);
+				delete this.settings.wordScores[word];
 			}
 		});
 		
@@ -185,7 +224,11 @@ export default class TAPlugin extends Plugin {
 
 		if (words.length === 0) return { result: EMPTY_FILE };
 
-		words.forEach((word: string) => this.wordTrie.insert(word));
+		words.forEach((word: string) => {
+			const score: number = this.settings.wordScores[word] ?? IMPORT_WORD_SCORE;
+			this.settings.wordScores[word] = score;
+			this.wordTrie.insert(word, score);
+		});
 
 		const dictFile: DictionaryFile = {
 			filename: file.name,
@@ -204,6 +247,7 @@ export default class TAPlugin extends Plugin {
 		dictFile.words.forEach((word: string) => {
 			if (!this.wordExistsInAnotherDict(word, index)) {
 				this.wordTrie.remove(word);
+				delete this.settings.wordScores[word];
 			}
 		});
 		this.settings.dictFiles.splice(index, 1);

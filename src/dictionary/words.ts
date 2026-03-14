@@ -7470,7 +7470,6 @@ const DEFAULT_WORDS : string[] = [
     "cheers",
     "idiot",
     "morbid",
-    "e-mail",
     "outcome",
     "gilt",
     "coldness",

@@ -58,16 +58,7 @@ export default class Trie {
     }
 
     bumpWordScore(word: string, delta: number = 1): void {
-        if (!this.wordScores.has(word)) return;
-
-        this.wordScores.set(word, (this.getScore(word) ?? 0) + delta);
-
-        const path: TrieNode[] | null = this.getPathNodes(word);
-        if (!path) return;
-
-        for (const node of path) {
-            this.refreshCache(node);
-        }
+        this.setWordScore(word, (this.getScore(word) ?? 0) + delta);
     }
 
     setWordScore(word: string, score: number): void {
@@ -96,6 +87,7 @@ export default class Trie {
 
         for (const word of tmp.cache) {
             if (results.length >= limit) break;
+            if (!this.shouldSuggestWord(prefix, word)) continue;
             if (caseSensitive && !word.startsWith(prefix)) continue;
             if (seen.has(word)) continue;
 
@@ -157,6 +149,7 @@ export default class Trie {
 
             for (const word of terminalWords) {
                 if (results.length >= limit) return;
+                if (!this.shouldSuggestWord(prefix, word)) continue;
                 if (seen.has(word)) continue;
                 if (caseSensitive && !word.startsWith(prefix)) continue;
 
@@ -167,8 +160,8 @@ export default class Trie {
 
         const childEntries: Array<[string, TrieNode]> = Object.entries(node.children);
         childEntries.sort(([, childA], [, childB]) => {
-            const bestA: string | undefined = childA.cache[0];
-            const bestB: string | undefined = childB.cache[0];
+            const bestA: string | undefined = this.getBestCandidate(childA);
+            const bestB: string | undefined = this.getBestCandidate(childB);
 
             if (!bestA && !bestB) return 0;
             if (!bestA) return 1;
@@ -220,8 +213,14 @@ export default class Trie {
             }
         }
 
-        for (const char in node.children) {
-            for (const word of node.children[char].cache) {
+        for (const child of Object.values(node.children)) {
+            for (const word of child.words) {
+                if (this.wordScores.has(word) && this.shouldCacheWord(node, word)) {
+                    candidates.add(word);
+                }
+            }
+
+            for (const word of child.cache) {
                 if (this.wordScores.has(word) && this.shouldCacheWord(node, word)) {
                     candidates.add(word);
                 }
@@ -233,8 +232,32 @@ export default class Trie {
             .slice(0, this.maxCacheSize);
     }
 
+    private getBestCandidate(node: TrieNode): string | undefined {
+        let best: string | undefined;
+
+        for (const word of node.words) {
+            if (!this.wordScores.has(word)) continue;
+            if (!best || this.compareWords(word, best) < 0) {
+                best = word;
+            }
+        }
+
+        for (const word of node.cache) {
+            if (!this.wordScores.has(word)) continue;
+            if (!best || this.compareWords(word, best) < 0) {
+                best = word;
+            }
+        }
+
+        return best;
+    }
+
     private shouldCacheWord(node: TrieNode, word: string): boolean {
         return word !== node.prefix;
+    }
+
+    private shouldSuggestWord(prefix: string, word: string): boolean {
+        return word !== prefix;
     }
 
     private compareWords(a: string, b: string): number {
