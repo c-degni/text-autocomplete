@@ -1,7 +1,8 @@
 import { PluginSettingTab, App, Setting, Notice, DropdownComponent, ToggleComponent, SliderComponent, TextComponent, ButtonComponent } from 'obsidian';
 import type TAPlugin from 'src/main';
 import { destroyTAUI } from './ui';
-import { DUPLICATE_FILE, DUPLICATE_WORD, EMPTY_FILE, OK, Result } from 'src/utils';
+import { DUPLICATE_FILE, DUPLICATE_WORD, EMPTY_FILE } from 'src/constants';
+import { Result } from 'src/utils';
 
 export interface DictionaryFile {
     filename: string;
@@ -16,6 +17,7 @@ export interface TASettings {
     caseSensitive: boolean;
     customDict: string[];
     dictFiles: DictionaryFile[];
+    wordScores: Record<string, number | undefined>;
 }
 
 export const DEFAULT_SETTINGS: TASettings = {
@@ -25,7 +27,8 @@ export const DEFAULT_SETTINGS: TASettings = {
     addSpace: false,
     caseSensitive: true,
     customDict: [],
-    dictFiles: []
+    dictFiles: [],
+    wordScores: {}
 }
 
 export class TASettingsTab extends PluginSettingTab {

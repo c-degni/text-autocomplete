@@ -1,7 +1,7 @@
 import { ViewPlugin, ViewUpdate, PluginValue } from '@codemirror/view';
 import { Editor } from 'obsidian';
-import { TASettings } from './settings';
 import { stringInWordOrBeforePunctuation, wordBeforeString } from 'src/utils';
+import TAPlugin from 'src/main';
 
 let dropdownEl: HTMLUListElement | null = null;
 
@@ -57,7 +57,7 @@ export function destroyTAUI() {
     dropdownEl = null;
 }
 
-export function updateSuggestions(suggestions: string[], editor: Editor, settings: TASettings) {
+export function updateSuggestions(suggestions: string[], editor: Editor, plugin: TAPlugin) {
     destroyTAUI();
 
     const cm = (editor as CodeMirrorEditor).cm;
@@ -68,22 +68,26 @@ export function updateSuggestions(suggestions: string[], editor: Editor, setting
     dropdownEl = createEl('ul');
     dropdownEl!.className = 'autocomplete-dropdown';
 
-    suggestions.forEach(suggestion => {
+    suggestions.forEach((suggestion: string) => {
         const li = createEl('li');
         li.textContent = suggestion;
-        li.addEventListener('mousedown', () => {
+        li.addEventListener('mousedown', async () => {
             const cursor = editor.getCursor();
             const line = editor.getLine(cursor.line);
             const beforeCursor = line.substring(0, cursor.ch);
             const match = wordBeforeString(beforeCursor);
+
             if (match) {
-                if (settings.addSpace) suggestion += " ";
+                let insert: string = `${suggestion}`; 
+                if (plugin.settings.addSpace) insert += " ";
                 editor.replaceRange(
-                    suggestion,
+                    insert,
                     { line: cursor.line, ch: cursor.ch - match[1].length }, // start position (line, position in line)
                     cursor // end position (line, position in line)
                 );
+                await plugin.bumpAcceptedWord(suggestion);
             }
+
             destroyTAUI();
         });
         dropdownEl?.appendChild(li);

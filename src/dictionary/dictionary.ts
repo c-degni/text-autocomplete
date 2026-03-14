@@ -1,8 +1,12 @@
-import { Trie } from './trie';
 import { DEFAULT_WORDS, CS_WORDS } from './words'
 
-let DEFAULT_TRIE = new Trie();
-DEFAULT_WORDS.forEach(word => DEFAULT_TRIE.insert(word));
-CS_WORDS.forEach(word => DEFAULT_TRIE.insert(word));
+export type Dictionary = {
+    name: string,
+    words: string[],
+    baseScore: number
+};
 
-export { DEFAULT_TRIE };
+export const DEFAULT_DICTIONARIES: Dictionary[] = [
+    { name: 'default', words: DEFAULT_WORDS, baseScore: 1 },
+    { name: 'computer-science', words: CS_WORDS, baseScore: 1 },
+];
