@@ -22,7 +22,7 @@ export function createTAUI() {
     return [
         ViewPlugin.fromClass(
             class implements PluginValue {
-                lastCursor: number | null;
+                lastCursor!: number | null;
 
                 update(update: ViewUpdate) {
                     if (!update.selectionSet && !update.docChanged && !update.focusChanged) return;

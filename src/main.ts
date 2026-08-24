@@ -7,10 +7,10 @@ import { Trie } from './dictionary/trie';
 import { ACCEPTED_SUGGESTION_BUMP, CUSTOM_WORD_SCORE, DEFAULT_WORD_SCORE, DUPLICATE_FILE, DUPLICATE_WORD, EMPTY_FILE, IMPORT_WORD_SCORE, NOT_OK, OK } from './constants';
 
 export default class TAPlugin extends Plugin {
-	settings: TASettings;
-	wordTrie: Trie;
-	lastCursor: EditorPosition | null;
-	settingsTab: TASettingsTab | null;
+	settings!: TASettings;
+	wordTrie!: Trie;
+	lastCursor!: EditorPosition | null;
+	settingsTab!: TASettingsTab | null;
 
 	async onload() {
 		await this.loadSettings();
@@ -127,10 +127,14 @@ export default class TAPlugin extends Plugin {
 
 	handleKeyDown(evt: KeyboardEvent) {
 		if (!this.settings.enabled) return;
-		if (evt.key === 'Enter' && evt.shiftKey) return;
 
 		const dropdown: Element | null = document.querySelector('.autocomplete-dropdown');
 		if (!dropdown) return;
+
+		const acceptKeyEnabled: boolean = 
+			(evt.key == 'Enter' && this.settings.enterAcceptKey) || (evt.key == 'Tab' && this.settings.tabAcceptKey);
+
+		if (evt.shiftKey && acceptKeyEnabled) return;
 
 		if (['Enter', 'Tab', 'ArrowDown', 'ArrowUp', 'Escape'].includes(evt.key)) {
 			evt.preventDefault();
@@ -144,7 +148,7 @@ export default class TAPlugin extends Plugin {
 			const active: Element | null = dropdown.querySelector('li.active');
 			let index: number = items.indexOf(active as HTMLLIElement);
 
-			if (evt.key === 'Enter' || evt.key === 'Tab') {
+			if (acceptKeyEnabled) {
 				const selected = active || items[0];
 				if (selected) {
 					selected.dispatchEvent(new Event('mousedown'));
@@ -152,8 +156,14 @@ export default class TAPlugin extends Plugin {
 				destroyTAUI();
 				return;
 			}
-			if (evt.key === 'ArrowDown') index = (index + 1) % items.length;
-			if (evt.key === 'ArrowUp') index = (index - 1 + items.length) % items.length;
+
+			if (evt.key === 'ArrowDown') {
+				index = (index + 1) % items.length;
+			}
+
+			if (evt.key === 'ArrowUp') {
+				index = (index - 1 + items.length) % items.length;
+			}
 
 			items.forEach((item, i) => item.classList.toggle('active', i === index));
 		}
