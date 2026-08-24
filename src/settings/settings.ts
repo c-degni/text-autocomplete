@@ -13,6 +13,8 @@ export interface TASettings {
     enabled: boolean;
     language: string;
     maxSuggestions: number;
+    enterAcceptKey: boolean;
+    tabAcceptKey: boolean;
     addSpace: boolean;
     caseSensitive: boolean;
     customDict: string[];
@@ -24,6 +26,8 @@ export const DEFAULT_SETTINGS: TASettings = {
     enabled: true,
     language: 'English',
     maxSuggestions: 3,
+    enterAcceptKey: true,
+    tabAcceptKey: true,
     addSpace: false,
     caseSensitive: true,
     customDict: [],
@@ -50,7 +54,7 @@ export class TASettingsTab extends PluginSettingTab {
             .addToggle((toggle: ToggleComponent) =>
                 toggle.setValue(this.plugin.settings.enabled)
                     .onChange(async (val: boolean) => {
-                        this.updateSetting('enabled', val, !val);
+                        await this.updateSetting('enabled', val, !val);
                     }));
 
         // LANGUAGE
@@ -61,7 +65,7 @@ export class TASettingsTab extends PluginSettingTab {
                 dropdown.addOption('English', 'English')
                     .setValue(this.plugin.settings.language)
                     .onChange(async (val: string) => {
-                        this.updateSetting('language', val, true);
+                        await this.updateSetting('language', val, true);
                     }));
 
         // MAX SUGGESTIONS
@@ -73,7 +77,38 @@ export class TASettingsTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.maxSuggestions)
                     .setDynamicTooltip()
                     .onChange(async (val: number) => {
-                        this.updateSetting('maxSuggestions', val, false);
+                        await this.updateSetting('maxSuggestions', val, true);
+                    }));
+
+        // ACCEPT KEY
+        new Setting(containerEl)
+            .setName('Enter as accept suggestion key')
+            .setDesc('Enable/disable ability to use `Enter` key to accept word suggestion.')
+            .addToggle((toggle: ToggleComponent) =>
+                toggle.setValue(this.plugin.settings.enterAcceptKey)
+                    .onChange(async (val: boolean) => {
+                        if (!val && !this.plugin.settings.tabAcceptKey) {
+                            new Notice('At least one accept key must remain enabled.');
+                            toggle.setValue(true);
+                            return;
+                        }
+                        
+                        await this.updateSetting('enterAcceptKey', val, false);
+                    }));
+
+        new Setting(containerEl)
+            .setName('Tab as accept suggestion key')
+            .setDesc('Enable/disable ability to use `Tab` key to accept word suggestion.')
+            .addToggle((toggle: ToggleComponent) =>
+                toggle.setValue(this.plugin.settings.tabAcceptKey)
+                    .onChange(async (val: boolean) => {
+                        if (!val && !this.plugin.settings.enterAcceptKey) {
+                            new Notice('At least one accept key must remain enabled.');
+                            toggle.setValue(true);
+                            return;
+                        }
+                        
+                        await this.updateSetting('tabAcceptKey', val, false);
                     }));
 
         // SPACE TERMINATOR
@@ -83,7 +118,7 @@ export class TASettingsTab extends PluginSettingTab {
             .addToggle((toggle: ToggleComponent) =>
                 toggle.setValue(this.plugin.settings.addSpace)
                     .onChange(async (val: boolean) => {
-                        this.updateSetting('addSpace', val, false);
+                        await this.updateSetting('addSpace', val, false);
                     }));
 
         // CASE SENSITIVE
@@ -93,7 +128,7 @@ export class TASettingsTab extends PluginSettingTab {
             .addToggle((toggle: ToggleComponent) =>
                 toggle.setValue(this.plugin.settings.caseSensitive)
                     .onChange(async (val: boolean) => {
-                        this.updateSetting('caseSensitive', val, true);
+                        await this.updateSetting('caseSensitive', val, true);
                     }));
 
         // CUSTOM DICT
